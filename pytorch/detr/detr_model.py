@@ -64,8 +64,25 @@ class Detr(pl.LightningModule):
         loss_dict = self.criterion(outputs, targets)
         weight_dict = self.criterion.weight_dict
         loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+        self.log('train_loss', loss, on_epoch=True)
+        return loss
 
-        return {"loss": loss, "log": loss_dict}
+    #def training_epoch_end(self, outputs):
+        #avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        #self.log('train_loss', avg_loss, prog_bar=False)
+
+    def validation_step(self, batch, batch_idx):
+        images, targets = batch
+
+        images = list(image for image in images)
+        targets = [{k: v for k, v in t.items()} for t in targets]
+        outputs = self.model(images)
+
+        loss_dict = self.criterion(outputs, targets)
+        weight_dict = self.criterion.weight_dict
+        loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+        self.log('val_loss', loss, on_step=True)
+
 
     def configure_optimizers(self):
         return torch.optim.SGD(
@@ -74,38 +91,3 @@ class Detr(pl.LightningModule):
             momentum=0.9,
             weight_decay=0.005,
         )
-
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument("--learning_rate", type=float, default=0.0001)
-        parser.add_argument("--num_classes", type=int, default=91)
-        parser.add_argument("--num_queries", type=int, default=5)
-        parser.add_argument("--pretrained", type=bool, default=True)
-        parser.add_argument("--pretrained_backbone", type=str, default="resnet50")
-        parser.add_argument("--data_dir", type=str, default=".")
-        parser.add_argument("--batch_size", type=int, default=1)
-        return parser
-
-
-def run_cli():
-    from pl_bolts.datamodules import VOCDetectionDataModule
-
-    pl.seed_everything(42)
-    parser = ArgumentParser()
-    parser = pl.Trainer.add_argparse_args(parser)
-    parser = Detr.add_model_specific_args(parser)
-
-    args = parser.parse_args()
-
-    datamodule = VOCDetectionDataModule.from_argparse_args(args)
-
-    args.num_classes = datamodule.num_classes
-
-    model = Detr(**vars(args))
-    trainer = pl.Trainer.from_argparse_args(args, gpus=1)
-    trainer.fit(model, datamodule)
-
-
-if __name__ == "__main__":
-    run_cli()

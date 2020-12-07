@@ -3,3 +3,11 @@
 *.png
 *.tar
 *.pyc
+*.pt
+*.zip
+*.onnx
+*.ckpt
+lightning_logs/
+trained_models/
+data/
+runs/

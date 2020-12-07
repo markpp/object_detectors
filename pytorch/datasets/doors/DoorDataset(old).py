@@ -25,7 +25,9 @@ class DoorDataset(torch.utils.data.Dataset):
 
     def load_sample(self, idx):
         img = cv2.imread(self.img_list[idx])
-        #img = cv2.cvtColor(), cv2.COLOR_BGR2RGB)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        (T, img) = cv2.threshold(img, 254, 255, cv2.THRESH_BINARY)
         img_h, img_w = img.shape[:2]
 
         boxes_path = self.img_list[idx].replace('/images/','/bboxes/').replace('.png','_boxes_image_format.txt')
@@ -134,13 +136,16 @@ class DoorDataset(torch.utils.data.Dataset):
         return len(self.img_list)
 
 
-
+'''
+(1) binarize images
+(2) random crops with padding when needed
+'''
 if __name__ == '__main__':
 
     dataset = DoorDataset(root='/home/markpp/github/MapGeneralization/data/Public',
-                          list='valid_list_reduced_cnn.txt')
+                          list='train_list_reduced_cnn.txt')
 
-    output_dir = "yolo/val"
+    output_dir = "output/train"
 
     for idx in range(len(dataset)):
         img, boxes = dataset[idx]
@@ -167,7 +172,6 @@ if __name__ == '__main__':
                 y_min = random.randrange(0, img_h - (dataset.image_size-1))
                 x_max, y_max = x_min+dataset.image_size, y_min+dataset.image_size
                 crop = img[y_min:y_max, x_min:x_max].copy()
-
 
                 bbs = []
                 # (4) check if bounding boxes are indside the crop

@@ -50,7 +50,7 @@ def label_unique(mask):
         cv2.drawContours(new_mask, [cont], contourIdx=-1, color=(i+1), thickness=-1)
     return new_mask
 
-class class_folders_dataset(Dataset):
+class BogODataset(Dataset):
     def __init__(self, root, transforms=None):
         super().__init__()
 
@@ -152,37 +152,9 @@ class class_folders_dataset(Dataset):
         target['image_id'] = torch.tensor([index])
         target['area'] = torch.as_tensor(area, dtype=torch.float32)
 
-        return torch.Tensor(image/255.0), target, image_id
+        #return torch.Tensor(image/255.0), target, image_id
+        return image, target, image_id
 
-
-from albumentations.pytorch.transforms import ToTensorV2, ToTensor
-
-def train_transforms(img_height, img_width):
-    return Augment.Compose(
-        [#Augment.Rotate(limit=90, interpolation=1, border_mode=4, p=0.5),
-         #Augment.VerticalFlip(p=0.5),
-         #Augment.HorizontalFlip(p=0.5),
-         #Augment.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1,
-         #                         rotate_limit=45, interpolation=1,
-         #                         border_mode=4, value=None, mask_value=None,
-         #                         always_apply=False, p=0.5),
-         Augment.RandomCrop(img_height, img_width, always_apply=True, p=1.0),
-         #Augment.RandomResizedCrop(height=img_height, width=img_width,
-         #                          scale=(0.9, 1.1), ratio=(1.0, 1.0),
-         #                          interpolation=1, always_apply=True, p=1.0),
-         #Augment.HueSaturationValue(hue_shift_limit=5, sat_shift_limit=5,
-         #                           val_shift_limit=5, p=0.5),
-         #Augment.RGBShift(r_shift_limit=5, g_shift_limit=5, b_shift_limit=5, p=0.5),
-         #Augment.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-         #Augment.Normalize(mean=(0.485, 0.456, 0.406),
-         #                  std=(0.229, 0.224, 0.225), always_apply=True),
-         #Augment.Normalize(mean=(0.485), std=(0.229), always_apply=True)
-         #ToTensor()
-         ],
-         p=1.0,
-         bbox_params=Augment.BboxParams(format="yolo", min_area=1,
-                                        min_visibility=0, label_fields=["labels"]),
-    )
 
 if __name__ == '__main__':
     """
@@ -192,7 +164,7 @@ if __name__ == '__main__':
         python main.py
     """
 
-    dataset = class_folders_dataset(root="/home/markpp/datasets/bo/train_1024",
+    dataset = BogODataset(root="/home/markpp/datasets/bo/train_1024",
                                transforms=train_transforms(512, 512))
 
     for i in range(len(dataset))[:]:
