@@ -12,11 +12,9 @@ import cv2
 from PIL import Image
 
 sys.path.append('../')
-from BogO.segmentation_dataset import BogODataset
+from datasets.BogO.segmentation_dataset import BogODataset
 
 import albumentations as Augment
-
-from albumentations.pytorch.transforms import ToTensorV2, ToTensor
 
 def collate_fn(batch):
     return list(zip(*batch))
@@ -60,9 +58,9 @@ class BogODataModule(pl.LightningDataModule):
         #download, unzip here. anything that should not be done distributed
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
-            self.data_train = BogODataset(root=os.path.join(self.data_dir,'train_1024'),
+            self.data_train = BogODataset(root=os.path.join(self.data_dir,'train/1024_crops'),
                                           transform=train_transforms(self.image_size, self.image_size))
-            self.data_val = BogODataset(root=os.path.join(self.data_dir,'val_1024'))#,
+            self.data_val = BogODataset(root=os.path.join(self.data_dir,'val/1024_crops'))#,
                                         #transform=test_transforms(self.image_size, self.image_size))
 
     def train_dataloader(self):
@@ -71,6 +69,13 @@ class BogODataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.data_val, batch_size=self.batch_size, num_workers=8, shuffle=False, collate_fn=collate_fn)
 
+    @property
+    def num_classes(self):
+        """
+        Return:
+            2
+        """
+        return 2
 
 if __name__ == '__main__':
 

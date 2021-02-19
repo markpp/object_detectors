@@ -1,4 +1,4 @@
-
+https://github.com/L4zyy/DETR_TPU
 
 
 - For each image, you need to have a target dictionnary with the keys "labels" (which in your case will be a vector of 1s) and "boxes" which contains as many boxes as you have elements in the label vector, with format (center_x, center_y, h, w), normalized by the image size.

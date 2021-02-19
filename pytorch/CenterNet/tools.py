@@ -15,15 +15,12 @@ class HeatmapLoss(nn.Module):
         self.alpha = alpha
         self.beta = beta
     def forward(self, inputs, targets):
-        #print(inputs.is_cuda)
-        #print(targets.is_cuda) # cpu
-
         inputs = torch.sigmoid(inputs)
         center_id = (targets == 1.0).float()
         other_id = (targets != 1.0).float()
+
         center_loss = -center_id * (1.0-inputs)**self.alpha * torch.log(inputs + 1e-14)
         other_loss = -other_id * (1 - targets)**self.beta * (inputs)**self.alpha * torch.log(1.0 - inputs + 1e-14)
-
         return center_loss + other_loss
 
 

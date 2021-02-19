@@ -7,10 +7,11 @@ import numpy as np
 import tools
 
 class CenterNet(nn.Module):
-    def __init__(self, input_size=None, trainable=False, num_classes=None, conf_thresh=0.3, nms_thresh=0.45, topk=100, use_nms=False, hr=False):
+    def __init__(self, device, input_size=None, mode='train', num_classes=None, pretrained=False, conf_thresh=0.3, nms_thresh=0.45, topk=100, use_nms=False, hr=False):
         super(CenterNet, self).__init__()
+        self.device = device
         self.input_size = input_size
-        self.trainable = trainable
+        self.mode = mode
         self.num_classes = num_classes
         self.conf_thresh = conf_thresh
         self.nms_thresh = nms_thresh
@@ -18,10 +19,10 @@ class CenterNet(nn.Module):
         self.stride = 4
         self.topk = topk
         self.grid_cell = self.create_grid(input_size)
-        self.scale = np.array([[[input_size, input_size, input_size, input_size]]])
-        self.scale_torch = torch.tensor(self.scale.copy()).float()
+        self.scale = np.array([[[input_size, input_size]]])
+        self.scale_torch = torch.tensor(self.scale.copy(), device=self.device).float()
 
-        self.backbone = resnet18(pretrained=trainable)
+        self.backbone = resnet18(pretrained=pretrained)
 
         self.smooth5 = nn.Sequential(
             SPP(),
@@ -50,7 +51,7 @@ class CenterNet(nn.Module):
         ws, hs = w // self.stride, h // self.stride
         grid_y, grid_x = torch.meshgrid([torch.arange(hs), torch.arange(ws)])
         grid_xy = torch.stack([grid_x, grid_y], dim=-1).float()
-        grid_xy = grid_xy.view(1, hs*ws, 2)
+        grid_xy = grid_xy.view(1, hs*ws, 2).to(self.device)
 
         return grid_xy
 
@@ -67,7 +68,7 @@ class CenterNet(nn.Module):
         output = torch.zeros_like(pred)
         pred[:, :, :2] = (torch.sigmoid(pred[:, :, :2]) + self.grid_cell) * self.stride
 
-        # [c_x, c_y, w, h] -> [xmin, ymin, xmax, ymax]
+        # [c_x, c_y] -> [c_x, c_y]
         output[:, :, 0] = pred[:, :, 0]
         output[:, :, 1] = pred[:, :, 1]
 
@@ -143,7 +144,7 @@ class CenterNet(nn.Module):
         txty_pred = self.txty_pred(p2)
 
         # train
-        if self.trainable:
+        if self.mode == 'train':
             # [B, H*W, num_classes]
             cls_pred = cls_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, self.num_classes)
             # [B, H*W, 2]
@@ -155,7 +156,7 @@ class CenterNet(nn.Module):
             return cls_loss, txty_loss, total_loss
 
         # test
-        else:
+        elif self.mode == 'test':
             with torch.no_grad():
                 # batch_size = 1
                 cls_pred = torch.sigmoid(cls_pred)
@@ -165,33 +166,42 @@ class CenterNet(nn.Module):
                 cls_pred *= keep
 
                 # decode box
-                txty_pred = txty_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 4)
-                # [B, H*W, 4] -> [H*W, 4]
-                bbox_pred = torch.clamp((self.decode_boxes(txty_pred) / self.scale_torch)[0], 0., 1.)
+                txty_pred = txty_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 2)
+                # [B, H*W, 2] -> [H*W, 2]
+                point_pred = torch.clamp((self.decode_boxes(txty_pred) / self.scale_torch)[0], 0., 1.)
 
                 # topk
                 topk_scores, topk_inds, topk_clses = self._topk(cls_pred)
 
                 topk_scores = topk_scores[0].cpu().numpy()
                 topk_ind = topk_clses[0].cpu().numpy()
-                topk_bbox_pred = bbox_pred[topk_inds[0]].cpu().numpy()
+                topk_point_pred = point_pred[topk_inds[0]].cpu().numpy()
 
                 if self.use_nms:
                     # nms
-                    keep = np.zeros(len(topk_bbox_pred), dtype=np.int)
+                    keep = np.zeros(len(topk_point_pred), dtype=np.int)
                     for i in range(self.num_classes):
                         inds = np.where(topk_ind == i)[0]
                         if len(inds) == 0:
                             continue
-                        c_bboxes = topk_bbox_pred[inds]
+                        c_bboxes = topk_point_pred[inds]
                         c_scores = topk_scores[inds]
                         c_keep = self.nms(c_bboxes, c_scores)
                         keep[inds[c_keep]] = 1
 
                     keep = np.where(keep > 0)
-                    topk_bbox_pred = topk_bbox_pred[keep]
+                    topk_point_pred = topk_point_pred[keep]
                     topk_scores = topk_scores[keep]
                     topk_ind = topk_ind[keep]
 
 
-                return topk_bbox_pred, topk_scores, topk_ind
+                return topk_point_pred, topk_scores, topk_ind
+        # export
+        elif self.mode == 'export':
+            with torch.no_grad():
+                # [B, H*W, num_classes]
+                cls_pred = cls_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, self.num_classes)
+                # [B, H*W, 2]
+                txty_pred = txty_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 2)
+                
+                return cls_pred, txty_pred

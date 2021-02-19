@@ -18,8 +18,7 @@ SPRAY_CLASSES = ['blue']
 
 def vis_data(images, targets, input_size):
     # vis data
-    img = images[0].mul(255).permute(1, 2, 0).numpy()[:, :, ::-1]
-    #print(img)
+    img = images[0].mul(255).byte().permute(1, 2, 0).numpy()[:, :, ::-1]
 
     '''
     mean=(0.485, 0.456, 0.406)
@@ -55,10 +54,18 @@ def vis_heatmap(targets):
     HW = targets.shape[1]
     h = int(np.sqrt(HW))
     for c in range(1):
-        heatmap = targets[0, :, c].reshape(h, h)
-        name = SPRAY_CLASSES[c]
-        heatmap = cv2.resize(heatmap, (512, 512))
-        cv2.imshow(name, heatmap)
+        class_heatmap = targets[0, :, c].reshape(h, h)
+        class_heatmap = cv2.resize(class_heatmap, (512, 512))
+        cv2.imshow("class_heatmap", class_heatmap)
+        x_heatmap = targets[1, :, c].reshape(h, h)
+        x_heatmap = cv2.resize(x_heatmap, (512, 512))
+        cv2.imshow("x_heatmap", x_heatmap)
+        y_heatmap = targets[2, :, c].reshape(h, h)
+        y_heatmap = cv2.resize(y_heatmap, (512, 512))
+        cv2.imshow("y_heatmap", y_heatmap)
+        weight_heatmap = targets[3, :, c].reshape(h, h)
+        weight_heatmap = cv2.resize(weight_heatmap, (512, 512))
+        cv2.imshow("weight_heatmap", weight_heatmap)
         #cv2.waitKey(0)
 
 def detection_collate(batch):
@@ -79,37 +86,42 @@ def detection_collate(batch):
         targets.append(torch.FloatTensor(sample[1]))
     return torch.stack(imgs, 0), targets
 
-def basic_transforms(img_height, img_width, image_pad=100):
-    return Augment.Compose([#Augment.ToGray(p=1.0),
-                            Augment.Rotate(limit=360, interpolation=1, border_mode=4, value=None, mask_value=None, always_apply=True),
-                            Augment.RandomCrop(img_height+image_pad, img_width+image_pad, always_apply=True),
-                            Augment.Resize(img_height, img_width, interpolation=cv2.INTER_NEAREST, always_apply=True),
-                            #Augment.RandomBrightnessContrast(p=1.0),
+def basic_transforms(img_height, img_width, image_pad=200):
+    return Augment.Compose([Augment.Resize(img_height, img_width, interpolation=cv2.INTER_NEAREST, always_apply=True),
                             #Augment.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), always_apply=True)
                             ], keypoint_params=Augment.KeypointParams(format='xy',label_fields=['class_labels'],remove_invisible=True))#ToTensor()
 
 def train_transforms(img_height, img_width, image_pad=0):
     return Augment.Compose([#Augment.ToGray(p=1.0),
-                            #Augment.Resize(img_height+image_pad, img_width+image_pad, interpolation=cv2.INTER_NEAREST, always_apply=True),
+                            Augment.Rotate(limit=360, interpolation=1, border_mode=4, value=None, mask_value=None, always_apply=True),
+                            Augment.RandomScale(scale_limit=[0.8,1.2], interpolation=1, always_apply=True),
+                            #Augment.Crop(x_min=0, y_min=0, x_max=int(1080*0.8), y_max=int(1080*0.8),always_apply=True),
+                            #Augment.CenterCrop(int(1080*0.8), int(1080*0.8), always_apply=True),
+                            #Augment.RandomCrop(int(1080*0.7), int(1080*0.7), always_apply=True),
+                            Augment.Resize(img_height, img_width, interpolation=cv2.INTER_NEAREST, always_apply=True),
+                            Augment.RandomBrightnessContrast(p=1.0),
                             Augment.HorizontalFlip(p=0.5),
-                            #Augment.RandomBrightnessContrast(p=1.0),
-                            ])#ToTensor()
+                            #Augment.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), always_apply=True)
+                            ], keypoint_params=Augment.KeypointParams(format='xy',label_fields=['class_labels'],remove_invisible=True))#ToTensor()
+
 
 class SprayDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir, batch_size, cfg):
+    def __init__(self, data_dir, batch_size, image_size):
         super().__init__()
         self.batch_size = batch_size
 
-        with open(os.path.join(data_dir,'train.txt'), 'r')  as f:
+        with open(os.path.join(data_dir,'det_train_json.txt'), 'r')  as f:
             self.train_list = f.read().splitlines()
 
-        with open(os.path.join(data_dir,'val.txt'), 'r')  as f:
+        with open(os.path.join(data_dir,'det_val_json.txt'), 'r')  as f:
             self.test_list = f.read().splitlines()
 
-        self.cfg = cfg
+        self.image_size = image_size
 
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
+            import os, sys
+            sys.path.append('../../')
             from datasets.sprays.dataset import SprayDataset
             '''
             dataset = SprayDataset(root=self.dataset_root, transform=SSDAugmentation(self.cfg['min_dim'], mean=(0.406, 0.456, 0.485), std=(0.225, 0.224, 0.229)))
@@ -120,12 +132,12 @@ class SprayDataModule(pl.LightningDataModule):
 
             '''
             self.data_train = SprayDataset(self.train_list,
-                                           transforms=basic_transforms(img_height=self.cfg['image_size'],
-                                                                       img_width=self.cfg['image_size'])
+                                           transforms=train_transforms(img_height=self.image_size,
+                                                                       img_width=self.image_size)
                                            )#noise_transform=extra_transforms())
             self.data_val = SprayDataset(self.test_list,
-                                         transforms=basic_transforms(img_height=self.cfg['image_size'],
-                                                                     img_width=self.cfg['image_size'])
+                                         transforms=basic_transforms(img_height=self.image_size,
+                                                                     img_width=self.image_size)
                                         )
 
     def train_dataloader(self):
@@ -147,19 +159,15 @@ class SprayDataModule(pl.LightningDataModule):
 
 if __name__ == '__main__':
 
-    cfg = {
-        'num_classes': 20,
-        'lr_epoch': (30, 40),
-        'max_epoch': 50,
-        'image_size': 800,
-        'name': 'VOC',
-    }
+    image_size = 512
+    num_classes = 1
 
-    dm = SprayDataModule(data_dir='/home/markpp/datasets/teejet/iphone_data/frames',
+    dm = SprayDataModule(data_dir='/home/markpp/datasets/teejet/Aabybro/iphone/',
                          batch_size=8,
-                         cfg=cfg)
+                         image_size=image_size)
 
     dm.setup()
+
 
     # cleanup output dir
     import os, shutil
@@ -169,14 +177,13 @@ if __name__ == '__main__':
     os.makedirs(output_root)
 
     import tools
-    for batch_id, (images, targets) in enumerate(dm.val_dataloader()):
+    for batch_id, (images, targets) in enumerate(dm.train_dataloader()):
         print("batch_id {}".format(batch_id))
-        #print(targets)
-
         targets = [label.tolist() for label in targets]
-        vis_data(images, targets, cfg['image_size'])
+        #for img, tar in images, targets:
+        vis_data(images, targets, image_size)
 
-        targets = tools.gt_creator(input_size=cfg['image_size'], stride=4, num_classes=cfg['num_classes'], label_lists=targets)
+        targets = tools.gt_creator(input_size=image_size, stride=4, num_classes=num_classes, label_lists=targets)
         vis_heatmap(targets)
 
         key = cv2.waitKey(0)

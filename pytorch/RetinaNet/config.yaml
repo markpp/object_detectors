@@ -1,0 +1,94 @@
+Dataset:
+  dataset: coco
+  root: "/home/ubuntu/COCO"
+  train_name: "train"
+  val_name: "val"
+  test_name: null
+  image_size: [512, 512, 3]
+  nsr: null
+Model:
+  backbone:
+    name: "resnet_50"
+    pretrained: True
+    freeze_bn: True
+  anchors:
+    scales: [1, 1.2599210498948732, 1.5874010519681994]
+    ratios: [0.5, 1, 2]
+    sizes: [32, 64, 128, 256, 512]
+    strides: [8, 16, 32, 64, 128]
+    prior_mean: null
+    prior_std: null
+  FPN:
+    pyramid_levels: [3, 4, 5, 6, 7]
+    channels: 256
+    upsample: "nearest"
+  head:
+    classification:
+      num_classes: 1
+      n_repeat: 4
+      use_bn: False
+      activation: 'relu'
+      loss:
+        name: "focalloss"
+        params:
+          alpha: 0.25
+          gamma: 2.0
+      bias_prior: 0.01
+    regression:
+      n_repeat: 4
+      use_bn: False
+      activation: 'relu'
+      loss:
+        name: "smooth_l1_loss"
+        params:
+          beta: 0.1
+Trainer:
+  logdir: "/home/ubuntu/coco_logs"
+  num_epochs: 100
+  batch_size:
+    train: 24
+    val: 24
+    test: 24
+  optimizer:
+    name: "torch.optim.Adam"
+    params:
+      betas: [0.9, 0.999]
+      weight_decay: 1e-6
+  scheduler:
+    name: "torch.optim.lr_scheduler.OneCycleLR"
+    params:
+      max_lr: 1e-5
+      anneal_strategy: 'cos'
+      pct_start: 1e-5
+      div_factor: 10
+      final_div_factor: 1e2
+  tpus: 0
+  gpus: 1
+  dist_backend: 'ddp'
+  workers: 8
+  clip_grad_norm: 0.1
+  amp: True
+  amp_backend: "native"
+  num_sanity_val_steps: 0
+  callbacks:
+    checkpoint:
+      enabled: True
+      save_top_k: 3
+      monitor: 'COCO_eval/mAP@0.5:0.95:0.05'
+      mode: 'max'
+      verbose: False
+    early_stopping:
+      enabled: True
+      monitor: 'COCO_eval/mAP@0.5:0.95:0.05'
+      mode: 'max'
+      patience: 5
+      verbose: False
+    lr_monitor:
+      enabled: True
+      logging_interval: null
+  save_val_predictions: True
+  save_test_predictions: True
+
+
+
+

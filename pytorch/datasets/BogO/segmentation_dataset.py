@@ -5,34 +5,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 import random
 import albumentations as Augment
-from skimage.exposure import match_histograms
 
-
-def mask2bboxes(mask):
-    # instances are encoded as different colors
-    obj_ids = np.unique(mask)
-
-    # first id is the background, so remove it
-    obj_ids = obj_ids[1:]
-
-    # split the color-encoded mask into a set
-    # of binary masks
-    masks = mask == obj_ids[:, None, None]
-
-    boxes, labels = [], []
-
-    # if no objects exists
-    if len(obj_ids) == 0:
-        return boxes, labels
-
-    for i, obj in enumerate(obj_ids):
-        pos = np.where(masks[i])
-        xmin, xmax = np.min(pos[1]), np.max(pos[1])
-        ymin, ymax = np.min(pos[0]), np.max(pos[0])
-        boxes.append([xmin, ymin, xmax, ymax])
-        labels.append(1)
-
-    return np.array(boxes), labels
 
 # remove when implemented in sample_dataset.py
 def label_unique(mask):
@@ -65,21 +38,68 @@ class BogODataset(Dataset):
     def __getitem__(self, idx):
 
         img_path = self.img_list[idx]
-
         image_id = os.path.basename(img_path).split('.')[0]
-        image = cv2.imread(img_path, cv2.IMREAD_COLOR)[:,:,0]
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        img = cv2.imread(img_path, cv2.IMREAD_COLOR)#[:,:,0]
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         mask_path = img_path.replace('jpg','png')
-        defect_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
 
         if self.transform:
-            sample = self.transform(image=image, mask=defect_mask)
-            image = sample["image"]
-            defect_mask = sample["mask"]
+            sample = self.transform(image=img, mask=mask)
+            img = sample["image"]
+            mask = sample["mask"]
 
-        unique_mask = label_unique(defect_mask)
+        target = {}
 
+        # if all objects in mask have been given the same value
+        #mask = label_unique(mask)
+
+        # instances are encoded as different colors
+        obj_ids = np.unique(mask)
+        # first id is the background, so remove it
+        obj_ids = obj_ids[1:]
+        # split the color-encoded mask into a set
+        # of binary masks
+        masks = mask == obj_ids[:, None, None]
+
+        boxes = []
+        num_objs = len(obj_ids)
+        # if no objects exists
+        if num_objs == 0:
+            boxes = np.zeros((0, 4), dtype=np.float32)
+        else:
+            for i, obj in enumerate(obj_ids):
+                pos = np.where(masks[i])
+                xmin, xmax = np.min(pos[1]), np.max(pos[1])
+                ymin, ymax = np.min(pos[0]), np.max(pos[0])
+                area = (xmax - xmin) * (ymax - ymin)
+                if xmin > xmax or ymin > ymax or area < 10.0:
+                    print([xmin, ymin, xmax, ymax])
+                    print(img_path)
+                else:
+                    boxes.append([xmin, ymin, xmax, ymax])
+            if len(boxes) > 0:
+                boxes = np.array(boxes)
+            else:
+                boxes = np.zeros((0, 4), dtype=np.float32)
+
+        target['boxes'] = torch.as_tensor(boxes, dtype=torch.float32)
+
+        target['labels'] = torch.ones((num_objs,), dtype=torch.int64)
+        target['masks'] = torch.as_tensor(masks, dtype=torch.uint8)
+        target['image_id'] = torch.tensor([idx])
+        target['area'] = torch.as_tensor((boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0]), dtype=torch.float32)
+
+        img = img.transpose((2, 0, 1))
+        img = img/255.0
+        img[0] = (img[0] - 0.485)/0.229
+        img[1] = (img[1] - 0.456)/0.224
+        img[2] = (img[2] - 0.406)/0.225
+        img = torch.from_numpy(img).float()
+        return img, target
+
+        '''
         boxes, labels = mask2bboxes(unique_mask)
 
         target = {}
@@ -104,3 +124,4 @@ class BogODataset(Dataset):
         image = torch.from_numpy(image)
         image = image.float()
         return image, target
+        '''

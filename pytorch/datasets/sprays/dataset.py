@@ -33,8 +33,8 @@ class SprayDataset(torch.utils.data.Dataset):
         else:
             print('ov failed to load a label')
 
-    def util(self, label_path):
-
+    def compute_crop_box(self, img_w, img_h, center):
+        x, y = center
         cv2.imshow("output",img)
 
 
@@ -42,6 +42,7 @@ class SprayDataset(torch.utils.data.Dataset):
         img, target, class_labels = self.load_sample(self.json_list[idx])
 
         if self.transform:
+            #crop_box = self.compute_crop_box(w, h, target[random.randint(0,len(target)-1)])
             sample = self.transform(image=img, keypoints=target, class_labels=class_labels)
             img = np.array(sample['image'])
             class_labels = sample['class_labels']
@@ -55,8 +56,6 @@ class SprayDataset(torch.utils.data.Dataset):
             target[:,1] /= h
         else:
             target = torch.as_tensor(target, dtype=torch.float32)
-
-
 
         img = img.transpose((2, 0, 1))
         img = torch.from_numpy(img)/255.0

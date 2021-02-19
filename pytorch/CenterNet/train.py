@@ -26,25 +26,38 @@ if __name__ == '__main__':
     cfg = {
         'num_classes': 1,
         'lr_epoch': (30, 40),
-        'max_epoch': 50,
-        'image_size': 600,
+        'max_epoch': 100,
+        'image_size': 512,
+        'batch_size': 8,
         'name': 'Spray',
+        'device': 'cuda',
     }
 
     from lightning_model import LightningDetector
     model = LightningDetector(cfg)
 
+    '''
+    from torchsummary import summary
+    model.model.trainable = False
+    summary(model.model.cuda(), (3, cfg['image_size'], cfg['image_size']))
+    model.model.trainable = True
+    '''
+
     import os, sys
     sys.path.append('../')
 
     from datasets.sprays.datamodule import SprayDataModule
-    dm = SprayDataModule(data_dir='/home/markpp/datasets/teejet/iphone_data/frames',
-                         batch_size=6,
-                         cfg=cfg)
+    dm = SprayDataModule(data_dir='/home/markpp/datasets/teejet/Aabybro/iphone/',
+                         batch_size=cfg['batch_size'],
+                         image_size=cfg['image_size'])
     dm.setup()
 
 
-    trainer = pl.Trainer(gpus=1, max_epochs=25, limit_train_batches=1.0, limit_val_batches=1.0, accumulate_grad_batches=4)#, profiler=True)
+    trainer = pl.Trainer(gpus=1, max_epochs=cfg['max_epoch'],
+                         limit_train_batches=1.0,
+                         limit_val_batches=1.0,
+                         accumulate_grad_batches=4,
+                         weights_summary='top')#, profiler=True)
 
     trainer.fit(model, dm)
 
